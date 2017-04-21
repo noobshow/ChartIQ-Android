@@ -1,0 +1,182 @@
+<script src="js/componentUI.js"></script>
+<script src="js/components.js"></script>
+
+<template id="cq-instant-chart-template">
+	<div cq-context class="no-touch">
+
+		<div class="ciq-nav">
+			<cq-menu class="ciq-search">
+				<cq-lookup cq-keystroke-claim cq-keystroke-default>
+					<cq-lookup-input cq-no-close>
+						<input id="symbol" type="text" spellcheck="off" autocomplete="off" autocorrect="off" autocapitalize="off" name="symbol" placeholder="Enter Symbol">
+						<cq-lookup-icon></cq-lookup-icon>
+					</cq-lookup-input>
+					<cq-lookup-results>
+						<cq-scroll></cq-scroll>
+					</cq-lookup-results>
+				</cq-lookup>
+			</cq-menu>
+		</div>
+		<!-- End Navbar -->
+
+		<div class="ciq-chart-area">
+			<div class="ciq-chart">
+				<div class="chartContainer" id="chartContainer" style="width:100%;height:100%">
+					<cq-chart-title cq-marker>
+						<cq-symbol></cq-symbol>
+						<cq-chart-price>
+							<cq-current-price cq-animate></cq-current-price>
+							<cq-change>
+								<div class="ico"></div>
+								<cq-todays-change></cq-todays-change> (
+								<cq-todays-change-pct></cq-todays-change-pct>)
+							</cq-change>
+						</cq-chart-price>
+					</cq-chart-title>
+					<cq-comparison cq-marker>
+						<cq-menu class="cq-comparison-new">
+							<cq-comparison-add-label>
+								<cq-comparison-plus></cq-comparison-plus><span>Compare</span><span>...</span>
+							</cq-comparison-add-label>
+							<cq-comparison-add>
+								<cq-comparison-lookup-frame>
+									<cq-lookup cq-keystroke-claim>
+										<cq-lookup-input cq-no-close>
+											<input type="text" cq-focus spellcheck="off" autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Enter Symbol">
+											<cq-lookup-icon></cq-lookup-icon>
+										</cq-lookup-input>
+											<cq-lookup-results>
+												<cq-scroll></cq-scroll>
+											</cq-lookup-results>
+									</cq-lookup>
+								</cq-comparison-lookup-frame>
+								<cq-swatch cq-no-close></cq-swatch>
+								<span><cq-accept-btn class="stx-btn">ADD</cq-accept-btn></span>
+							</cq-comparison-add>
+						</cq-menu>
+						<cq-comparison-key>
+							<template cq-comparison-item>
+								<cq-comparison-item>
+									<cq-comparison-swatch></cq-comparison-swatch>
+									<cq-comparison-label>AAPL</cq-comparison-label>
+									<cq-comparison-price cq-animate></cq-comparison-price>
+									<cq-comparison-loader></cq-comparison-loader>
+									<div class="stx-btn-ico ciq-close"></div>
+								</cq-comparison-item>
+							</template>
+						</cq-comparison-key>
+					</cq-comparison>
+					<cq-loader></cq-loader>
+				</div> <!-- chart Container -->
+			</div> <!-- ciq-chart -->
+		</div> <!-- ciq-chart-area -->
+	</div> <!-- context -->
+</template>
+<!-- End Chart Area -->
+
+
+<script>
+(function(){
+
+	var doc=document.currentScript.ownerDocument;
+
+	var CQDropInChart = {
+		prototype: Object.create(HTMLElement.prototype)
+	};
+
+	// Create a proxy for stx. You can call any valid stx method directly on the component
+	for (var key1 in CIQ.ChartEngine.prototype)  {
+		CQDropInChart.prototype[key1] = (function(fname){
+			return function(){
+				this.stx[fname].apply(this.stx, arguments);
+			};
+		})(key1);
+	}
+	// Create a proxy for context. You can call any valid context method directly on the component
+	for (var key2 in CIQ.UI.Context.prototype)  {
+		CQDropInChart.prototype[key2] = (function(fname){
+			return function(){
+				this.context[fname].apply(this.context, arguments);
+			};
+		})(key2);
+	}
+
+	CQDropInChart.prototype.createdCallback=function(){
+		this.unique=CIQ.uniqueID();
+		// Make a uiManager if one doesn't exist. UIManager must be a singleton on the page.
+		var uiManager=$("cq-ui-manager")[0];
+		if(!uiManager){
+			uiManager=$("<cq-ui-manager></cq-ui-manager>")[0];
+			$("body").append($(uiManager));
+		}
+		// We'll use this object to register our dropins. When they are detached, we'll destroy the uiManager
+		if(!uiManager.dropins) uiManager.dropins={};
+		uiManager.dropins[this.unique]=this;
+		this.uiManager=uiManager;
+
+		// Make this component from the template
+		var template = doc.querySelector('#cq-instant-chart-template');
+		CIQ.UI.makeFromTemplate(template, this);
+		this.node=$(this);
+	};
+
+	CQDropInChart.prototype.start=function(){
+		var node=this.node;
+		this.stx=new CIQ.ChartEngine({container:this.node.find(".chartContainer")[0]});
+		var context=this.context=new CIQ.UI.Context(this.stx, node.find("*[cq-context]"));
+
+		context.changeSymbol=function(data){
+			var stx=this.stx;
+			if(this.loader) this.loader.show();
+			data.symbol=data.symbol.toUpperCase(); // set a pretty display version
+
+			var self=this;
+			stx.newChart(data, null, null, function(err){
+				if(self.loader) self.loader.hide();
+			});
+		};
+
+
+
+		context.UISymbolLookup=node.find(".ciq-search cq-lookup")[0];
+		context.UISymbolLookup.setCallback(function(context, data){
+			context.changeSymbol(data);
+		});
+
+		var KeystrokeHub=new CIQ.UI.KeystrokeHub($("body"), context, {cb:CIQ.UI.KeystrokeHub.defaultHotKeys}); // TODO, create dynamically if one doesn't exist already
+
+		if(context.loader) context.loader.show();
+
+		// Check the attribute in case a symbol was declared as an attribute
+		this.initialSymbol=node.attr("symbol");
+	};
+
+	CQDropInChart.prototype.attachQuoteFeed=function(){
+		this.stx.attachQuoteFeed.apply(this.stx, arguments);
+		// Once a quote feed is set, we can then fetch a symbol that was set in the attribute
+		if(this.initialSymbol) this.context.changeSymbol({symbol:this.initialSymbol});
+	};
+
+	CQDropInChart.prototype.attachedCallback=function(){
+		var self=this;
+		// Wait for the page to actually render, otherwise the chart size will be zero
+		setTimeout(function(){
+			self.start();
+		},0);
+	};
+
+	CQDropInChart.prototype.detachedCallback=function(){
+		this.stx.destroy();
+		delete this.uiManager.dropins[this.unique];
+		if(CIQ.isEmpty(this.uiManager.dropins)) $(this.uiManager).remove();
+		//TODO, kill context
+	};
+
+	document.registerElement("cq-instant-chart", CQDropInChart);
+
+})();
+
+
+
+
+</script>
